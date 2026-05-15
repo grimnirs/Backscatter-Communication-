@@ -27,21 +27,21 @@
 #include "receiver_CC2500.h"
 #include "packet_generation.h"
 
-
 #define RADIO_SPI             spi0
 #define RADIO_MISO              16
 #define RADIO_MOSI              19
 #define RADIO_SCK               18
 
 #define TX_DURATION            250 // send a packet every 250ms (when changing baud-rate, ensure that the TX delay is larger than the transmission time)
-#define RECEIVER              2500 // define the receiver board either 2500 or 1352
-#define PIN_TX1                  6
-#define PIN_TX2                 27
+#define RECEIVER              1352 // define the receiver board either 2500 or 1352
+#define PIN_TX1                 27 // wired to frontend AE3 (only connected antenna)
+#define PIN_TX2                  6 // unused — ignored when TWOANTENNAS=false
 #define CLOCK_DIV0              20 // larger
 #define CLOCK_DIV1              18 // smaller
-#define DESIRED_BAUD        100000
-#define TWOANTENNAS          true
-
+#define DESIRED_BAUD          5000
+#define TWOANTENNAS          false
+#define OOK_MODE              true // true = OOK (symbol 0 holds pin low), false = 2-FSK
+    
 #define CARRIER_FEQ     2450000000
 
 int main() {
@@ -74,7 +74,7 @@ int main() {
     uint sm = 0;
     struct backscatter_config backscatter_conf;
     uint16_t instructionBuffer[32] = {0}; // maximal instruction size: 32
-    backscatter_program_init(pio, sm, PIN_TX1, PIN_TX2, CLOCK_DIV0, CLOCK_DIV1, DESIRED_BAUD, &backscatter_conf, instructionBuffer, TWOANTENNAS);
+    backscatter_program_init(pio, sm, PIN_TX1, PIN_TX2, CLOCK_DIV0, CLOCK_DIV1, DESIRED_BAUD, &backscatter_conf, instructionBuffer, TWOANTENNAS, OOK_MODE);
 
     static uint8_t message[buffer_size(PAYLOADSIZE+2, HEADER_LEN)*4] = {0};  // include 10 header bytes
     static uint32_t buffer[buffer_size(PAYLOADSIZE, HEADER_LEN)] = {0}; // initialize the buffer
@@ -94,13 +94,13 @@ int main() {
     Packet_status status;
     uint8_t rx_buffer[RX_BUFFER_SIZE];
     uint64_t time_us;
-    setupReceiver();
+    //setupReceiver();
     set_frecuency_rx(CARRIER_FEQ + backscatter_conf.center_offset);
     set_frequency_deviation_rx(backscatter_conf.deviation);
     set_datarate_rx(backscatter_conf.baudrate);
     set_filter_bandwidth_rx(backscatter_conf.minRxBw);
     sleep_ms(1);
-    RX_start_listen();
+    //RX_start_listen();
     printf("started listening\n");
     bool rx_ready = true;
 

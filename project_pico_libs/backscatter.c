@@ -26,7 +26,7 @@ uint8_t instructionCount(uint16_t delay, uint16_t max_delay){
     }
 }
 
-bool generatePIOprogram(uint16_t d0,uint16_t d1, uint32_t baud, uint16_t* instructionBuffer, struct pio_program *backscatter_program, bool twoAntennas){
+bool generatePIOprogram(uint16_t d0,uint16_t d1, uint32_t baud, uint16_t* instructionBuffer, struct pio_program *backscatter_program, bool twoAntennas, bool ook){
     // compute label positions
     uint16_t MAX_ASMDELAY = 0x0020; // 32
     uint16_t OPT_SIDE_1   = 0x0000;
@@ -48,8 +48,10 @@ bool generatePIOprogram(uint16_t d0,uint16_t d1, uint32_t baud, uint16_t* instru
     uint8_t loop_0_label = send_0_label + 1;
 
     // check that the program will fit into memory
-    /*                      pull high                pull low            jmp                        high                              low                               jmp  */
-    if(loop_0_label + instructionCount(d0/2, MAX_ASMDELAY) + instructionCount(d0/2 - 1, MAX_ASMDELAY) + 1 + instructionCount(tmp0, MAX_ASMDELAY) + instructionCount(max(0,lastPeriodCycles0-tmp0), MAX_ASMDELAY) + 1 >= 32){
+    uint8_t send0_size = ook
+        ? instructionCount(d0 - 1, MAX_ASMDELAY) + 1 + instructionCount(lastPeriodCycles0, MAX_ASMDELAY) + 1
+        : instructionCount(d0/2, MAX_ASMDELAY) + instructionCount(d0/2 - 1, MAX_ASMDELAY) + 1 + instructionCount(tmp0, MAX_ASMDELAY) + instructionCount(max(0,lastPeriodCycles0-tmp0), MAX_ASMDELAY) + 1;
+    if(loop_0_label + send0_size >= 32){
         printf("ERROR: The clock dividers are too small. The program would not fit into the state-machine instruction memory. Alternatively, you can disable the second antenna. This increaes the maximal delay per instruction from 8 to 32 cycles and thus significanlty reduces the required code space.");
         return false;
     }
@@ -74,17 +76,26 @@ bool generatePIOprogram(uint16_t d0,uint16_t d1, uint32_t baud, uint16_t* instru
     instructionBuffer[length] = ASM_JMP | get_symbol_label;               // ...: jmp    get_symbol_label
     length++;
     /*       symbol 0       */
-    instructionBuffer[length] = ASM_MOV | (ASM_X_REG << 5) | ASM_ISR_REG, // ...: mov    x, isr  
-    length++; 
-    // full periods
-    repeat(instructionBuffer, d0/2,     ASM_SET_PINS | OPT_SIDE_1 | 1, &length, MAX_ASMDELAY);    // ...: set    pins, 1         side 1 [delay_part] 
-    repeat(instructionBuffer, d0/2 - 1, ASM_SET_PINS | OPT_SIDE_0 | 0, &length, MAX_ASMDELAY);    // ...: set    pins, 0         side 0 [delay_part] 
-    instructionBuffer[length] = ASM_JMP_XMM | (0x1F & loop_0_label);      //  ...: jmp    x--, loop_0_label
+    instructionBuffer[length] = ASM_MOV | (ASM_X_REG << 5) | ASM_ISR_REG, // ...: mov    x, isr
     length++;
-    // remaining period to fill symbol time
-    repeat(instructionBuffer,                          tmp0, ASM_SET_PINS | OPT_SIDE_1 | 1, &length, MAX_ASMDELAY);  //  ...: set    pins, 1         side 1 [delay_part] 
-    repeat(instructionBuffer, max(0,lastPeriodCycles0-tmp0), ASM_SET_PINS | OPT_SIDE_0 | 0, &length, MAX_ASMDELAY);  //  ...: set    pins, 0         side 0 [delay_part] 
-    instructionBuffer[length] = ASM_JMP | get_symbol_label; // ...: jmp    get_symbol_label
+    if(ook){
+        // OOK: pin held low for full symbol — no backscatter tone
+        repeat(instructionBuffer, d0 - 1, ASM_SET_PINS | OPT_SIDE_0 | 0, &length, MAX_ASMDELAY);
+        instructionBuffer[length] = ASM_JMP_XMM | (0x1F & loop_0_label);
+        length++;
+        repeat(instructionBuffer, lastPeriodCycles0, ASM_SET_PINS | OPT_SIDE_0 | 0, &length, MAX_ASMDELAY);
+        instructionBuffer[length] = ASM_JMP | get_symbol_label;
+    } else {
+        // full periods
+        repeat(instructionBuffer, d0/2,     ASM_SET_PINS | OPT_SIDE_1 | 1, &length, MAX_ASMDELAY);
+        repeat(instructionBuffer, d0/2 - 1, ASM_SET_PINS | OPT_SIDE_0 | 0, &length, MAX_ASMDELAY);
+        instructionBuffer[length] = ASM_JMP_XMM | (0x1F & loop_0_label);
+        length++;
+        // remaining period to fill symbol time
+        repeat(instructionBuffer,                          tmp0, ASM_SET_PINS | OPT_SIDE_1 | 1, &length, MAX_ASMDELAY);
+        repeat(instructionBuffer, max(0,lastPeriodCycles0-tmp0), ASM_SET_PINS | OPT_SIDE_0 | 0, &length, MAX_ASMDELAY);
+        instructionBuffer[length] = ASM_JMP | get_symbol_label;
+    }
 
     // configure program origin and length
     backscatter_program->instructions = instructionBuffer;
@@ -97,7 +108,7 @@ bool generatePIOprogram(uint16_t d0,uint16_t d1, uint32_t baud, uint16_t* instru
     - based on d0/d1/baud, the modulation parameters will be computed and returned in the struct backscatter_config 
     - pin2 is ignored if twoAntennas==false
 */
-void backscatter_program_init(PIO pio, uint sm, uint pin1, uint pin2, uint16_t d0, uint16_t d1, uint32_t baud, struct backscatter_config *config, uint16_t *instructionBuffer, bool twoAntennas){
+void backscatter_program_init(PIO pio, uint sm, uint pin1, uint pin2, uint16_t d0, uint16_t d1, uint32_t baud, struct backscatter_config *config, uint16_t *instructionBuffer, bool twoAntennas, bool ook){
     pio_sm_set_enabled(pio, sm, false); // stop state machine if running
     // print warning at invalid settings
     if(d0 % 2 != 0){
@@ -114,7 +125,7 @@ void backscatter_program_init(PIO pio, uint sm, uint pin1, uint pin2, uint16_t d
     }
     // generate pio-program
     struct pio_program backscatter_program;
-    generatePIOprogram(d0,d1,baud, instructionBuffer, &backscatter_program, twoAntennas);
+    generatePIOprogram(d0,d1,baud, instructionBuffer, &backscatter_program, twoAntennas, ook);
     uint offset = 0;
     pio_add_program_at_offset(pio, &backscatter_program, offset); // load program
     /* print state-machine instructions */
@@ -148,8 +159,15 @@ void backscatter_program_init(PIO pio, uint sm, uint pin1, uint pin2, uint16_t d
     pio_sm_put_blocking(pio, sm, reps1); // -1 is required since JMP 0-- is still true
 
     // compute configuration parameters
-    uint32_t fcenter    = (CLKFREQ*1000000/d0 + CLKFREQ*1000000/d1)/2;
-    uint32_t fdeviation = abs(round((((double) CLKFREQ*1000000)/((double) d1)) - ((double) fcenter)));
+    uint32_t fcenter, fdeviation;
+    if(ook){
+        // OOK: single tone at CLKFREQ/d1; bandwidth dominated by baud rate
+        fcenter    = CLKFREQ*1000000/d1;
+        fdeviation = 0;
+    } else {
+        fcenter    = (CLKFREQ*1000000/d0 + CLKFREQ*1000000/d1)/2;
+        fdeviation = abs(round((((double) CLKFREQ*1000000)/((double) d1)) - ((double) fcenter)));
+    }
     config->baudrate    = baud;
     config->center_offset = round(fcenter);
     config->deviation   = round(fdeviation);

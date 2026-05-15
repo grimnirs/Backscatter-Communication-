@@ -1,0 +1,50 @@
+# Ignore everything except files needed for OOK work.
+# Relevant: carrier-receiver-baseband/main.c, project_pico_libs/backscatter.{c,h},
+#          project_pico_libs/packet_generation.{c,h}, CLAUDE.md, README.md
+
+# --- Top-level dirs not relevant ---
+baseband/
+carrier-CC2500/
+carrier-Firefly/
+carrier-characteristics/
+carrier-nrf52840/
+carrier-receiver-CC1352/
+hardware/
+receiver-CC2500/
+stats/
+
+# --- carrier-receiver-baseband/: only main.c is needed ---
+carrier-receiver-baseband/build/
+carrier-receiver-baseband/CMakeLists.txt
+carrier-receiver-baseband/pico_sdk_import.cmake
+carrier-receiver-baseband/flash.sh
+carrier-receiver-baseband/serial-print.py
+carrier-receiver-baseband/README.md
+carrier-receiver-baseband/.vscode/
+
+# --- project_pico_libs/: ignore CC2500 driver files ---
+project_pico_libs/carrier_CC2500.c
+project_pico_libs/carrier_CC2500.h
+project_pico_libs/receiver_CC2500.c
+project_pico_libs/receiver_CC2500.h
+
+# --- Build artifacts (any location) ---
+**/build/
+**/*.uf2
+**/*.elf
+**/*.bin
+**/*.hex
+**/*.map
+**/*.dis
+**/CMakeFiles/
+**/CMakeCache.txt
+**/cmake_install.cmake
+**/compile_commands.json
+**/*.ninja*
+
+# --- Misc ---
+.git/
+**/.DS_Store
+LICENSE.txt
+requirements.txt
+claudeignore
